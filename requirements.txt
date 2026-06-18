@@ -1,0 +1,10 @@
+# Mahwous Pricing v2 — runtime dependencies
+streamlit>=1.40        # st.badge / st.fragment مطلوبان
+pydantic>=2.0          # نماذج v2 (ConfigDict / field_validator / frozen)
+pandas>=2.0
+rapidfuzz>=3.0         # token_set_ratio في المطابقة
+requests>=2.28         # نداءات AI + Make webhook
+openpyxl>=3.1          # تصدير Excel (اختياري)
+
+# اختبارات
+pytest>=7.0
