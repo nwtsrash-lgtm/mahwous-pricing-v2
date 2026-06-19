@@ -19,6 +19,10 @@ from core.enums import SectionType
 PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 DATA_DIR: Final[Path] = PROJECT_ROOT / "data"
 DEFAULT_DB_PATH: Final[Path] = DATA_DIR / "perfume_pricing.db"
+# قاعدة بيانات المنافسين الحيّة (مخزن الكشط، ~129K منتج) — مصدر كشف المفقودات.
+COMPETITOR_DB_PATH: Final[Path] = DATA_DIR / "pricing_v18.db"
+MISSING_CACHE_PATH: Final[Path] = DATA_DIR / "missing_cache.pkl"
+COMPETITORS_FILE: Final[Path] = DATA_DIR / "competitors_list_v30.json"
 
 # ════════════════════════════════════════════════════════════════════
 #  أسماء الأعمدة (#PRESERVED_LOGIC — من app.py، حرفية لا تُغيَّر)
