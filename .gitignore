@@ -30,7 +30,8 @@ htmlcov/
 
 # البيانات والكاشات (تقيم على Railway Volume — لا تُلتزَم في git)
 # القاعدة 263MB + الكاشات الدافئة تُرفع للـVolume مرة واحدة، لا عبر المستودع.
-data/
+data/*
+!data/competitors_list_v30.json
 *.db
 *.pkl
 
