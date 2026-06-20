@@ -24,9 +24,19 @@ env/
 .coverage
 htmlcov/
 
-# Environment variables
+# Environment variables (الأسرار: متغيّرات بيئة/أسرار Railway — لا تُلتزَم أبداً)
 .env
 .env.local
+
+# البيانات والكاشات (تقيم على Railway Volume — لا تُلتزَم في git)
+# القاعدة 263MB + الكاشات الدافئة تُرفع للـVolume مرة واحدة، لا عبر المستودع.
+data/
+*.db
+*.pkl
+
+# أدوات فحص محلية مؤقتة
+_cleanvenv/
+_clean_import_test.py
 
 # OS
 .DS_Store
