@@ -117,7 +117,7 @@ class ScraperService:
         try:
             from engines.mahally_scraper import MahallyScraper  # type: ignore
 
-            return MahallyScraper()
+            return MahallyScraper(db_path=self._db)
         except Exception as exc:  # pragma: no cover - يحتاج المحرّك
             raise RepositoryError("تعذّر تحميل محرّك محلي", error=str(exc)) from exc
 
