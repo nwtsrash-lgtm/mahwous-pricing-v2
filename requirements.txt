@@ -1,10 +1,17 @@
-# Mahwous Pricing v2 — runtime dependencies
+# Mahwous Pricing v2 — runtime dependencies (المستودع مكتفٍ ذاتياً: engines/observability/utils/config مرفقة)
 streamlit>=1.40        # st.badge / st.fragment مطلوبان
 pydantic>=2.0          # نماذج v2 (ConfigDict / field_validator / frozen)
 pandas>=2.0
+numpy>=1.24            # يستورده engines.engine مباشرةً (كان يُجلب ضمنياً عبر pandas)
 rapidfuzz>=3.0         # token_set_ratio في المطابقة
 requests>=2.28         # نداءات AI + Make webhook
-openpyxl>=3.1          # تصدير Excel (اختياري)
+openpyxl>=3.1          # قراءة/تصدير Excel (رفع الكتالوج + التصدير)
 
 # اختبارات
 pytest>=7.0
+
+# ── اختياري: مطلوبة فقط لصفحة «🕷️ كشط المنافسين» (تُحمَّل كسولاً؛ التطبيق يقلع بدونها) ──
+# المسار الأساسي (لوحة/تسعير/مفقودات) لا يحتاجها — تُحقّق باستيراد نظيف.
+# selenium>=4.0        # كشط المتاجر عبر متصفّح (يتطلب ثنائي متصفّح على الخادم)
+# beautifulsoup4>=4.11 # تحليل HTML للكشط
+# aiohttp>=3.8         # طلبات كشط متزامنة (وحدات realtime)

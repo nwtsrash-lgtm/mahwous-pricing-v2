@@ -3,7 +3,11 @@ import pandas as pd
 import pytest
 
 from core.exceptions import DataLossError
-from services.audit_service import AuditService, duplicate_check
+from services.audit_service import (
+    AuditService,
+    dedup_missing_vs_matched,
+    duplicate_check,
+)
 from services.classification_service import ClassificationService
 
 
@@ -28,6 +32,29 @@ def test_duplicate_between_price_and_missing_detected() -> None:
     assert not report.is_balanced
     with pytest.raises(DataLossError):
         AuditService().assert_conserved(report)
+
+
+def test_dedup_missing_vs_matched_removes_priced_keeps_rest() -> None:
+    """#PRESERVED_LOGIC app.py:1184-1222 — المطابَق سعرياً يُزال من المفقودات."""
+    sections = {
+        "price_raise": pd.DataFrame({"منتج_المنافس": ["  Oud Royal  ", "❌ فشل"]}),
+        "price_lower": pd.DataFrame(),
+        "approved": pd.DataFrame({"منتج_المنافس": ["Musk Pure"]}),
+    }
+    missing = pd.DataFrame({
+        "منتج_المنافس": ["oud royal", "musk pure", "عطر فريد مفقود"],
+        "مستوى_الثقة": ["review", "green", "green"],
+    })
+    cleaned, removed = dedup_missing_vs_matched(sections, missing)
+    assert removed == 2                                   # oud royal + musk pure
+    assert list(cleaned["منتج_المنافس"]) == ["عطر فريد مفقود"]
+
+
+def test_dedup_missing_vs_matched_noop_when_no_overlap() -> None:
+    sections = {"price_raise": pd.DataFrame({"منتج_المنافس": ["X"]})}
+    missing = pd.DataFrame({"منتج_المنافس": ["Y", "Z"]})
+    cleaned, removed = dedup_missing_vs_matched(sections, missing)
+    assert removed == 0 and len(cleaned) == 2
 
 
 def test_duplicate_check_normalizes_and_excludes_failed() -> None:

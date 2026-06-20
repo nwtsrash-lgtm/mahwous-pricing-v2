@@ -32,6 +32,31 @@ def _normalized_keys(
     return set(series.tolist())
 
 
+def dedup_missing_vs_matched(
+    sections: dict[str, pd.DataFrame], missing_df: pd.DataFrame | None,
+) -> tuple[pd.DataFrame | None, int]:
+    """يزيل من المفقودات أي منتج منافس مطابَق في قسم سعري (مصدر الحقيقة الحاسم).
+
+    #PRESERVED_LOGIC: نقل دقيق لـ ``_dedup_missing_vs_matched`` (app.py:1184-1222)
+    — تُستدعى في كل مسارات التحليل قبل التدقيق: المطابقة السعرية حاسمة، فأي منافس
+    وقع في 🔴/🟢/✅ (عدا ❌) لا يُعدّ مفقوداً. يُعيد (المفقودات بعد التنقية، عدد المُزال).
+    """
+    if (not isinstance(missing_df, pd.DataFrame) or missing_df.empty
+            or COL_COMP_NAME not in missing_df.columns):
+        return missing_df, 0
+    matched: set[str] = set()
+    for key in _PRICE_SECTIONS:
+        matched |= _normalized_keys(sections.get(key, pd.DataFrame()), exclude_failed=True)
+    if not matched:
+        return missing_df, 0
+    keys = missing_df[COL_COMP_NAME].fillna("").astype(str).str.strip().str.lower()
+    keep = ~keys.isin(matched)
+    removed = int((~keep).sum())
+    if removed == 0:
+        return missing_df, 0
+    return missing_df[keep].reset_index(drop=True), removed
+
+
 def duplicate_check(
     sections: dict[str, pd.DataFrame], missing_df: pd.DataFrame | None,
 ) -> tuple[int, list[str]]:

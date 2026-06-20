@@ -14,8 +14,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import streamlit as st  # الاستيراد العلوي الوحيد لـ Streamlit في المشروع كله
 
-from bootstrap import Container, build_container, run_analysis
-from core.exceptions import DataLossError
+from bootstrap import (
+    Container,
+    build_container,
+    run_missing_analysis,
+    run_pricing_analysis,
+)
 from ui.pages import (
     approved,
     dashboard,
@@ -25,6 +29,7 @@ from ui.pages import (
     price_raise,
     processed,
     review,
+    scraper,
 )
 from ui.state_manager import AppState, StateStore, StreamlitStore
 
@@ -39,29 +44,37 @@ def _container() -> Container:
     return build_container()
 
 
-def _read_upload(uploaded: Any) -> Any:
-    """يقرأ الكتالوج المرفوع (CSV/Excel)."""
-    import pandas as pd
-
-    if str(getattr(uploaded, "name", "")).endswith(".xlsx"):
-        return pd.read_excel(uploaded)
-    return pd.read_csv(uploaded)
-
-
 def _make_analyze(
     state: AppState, store: StateStore, container: Container,
 ) -> Callable[[Any], None]:
-    """يبني رد نداء التحليل (يقرأ → يشغّل → يخزّن، مع حارس حفظ البيانات)."""
+    """رد نداء التحليل الكامل: كتالوج → مفقودات → تسعير → أقسام + تدقيق → تخزين."""
 
     def _run(uploaded: Any) -> None:
+        from core.enums import SectionType
+        from services.catalog_service import load_catalog
+
         try:
-            result, split, missing_df = run_analysis(container, _read_upload(uploaded))
-            state.analysis_results = result
-            state.sections = split.sections
+            with st.spinner("⏳ تحميل الكتالوج وكشف المفقودات (~دقيقتان لأول مرة)…"):
+                our_df = load_catalog(uploaded)
+                state.our_catalog = our_df
+                missing_df, mstats = run_missing_analysis(container, our_df)
             state.missing_df = missing_df
-            st.toast("✅ اكتمل التحليل", icon="✅")
-        except DataLossError as exc:
-            st.error(f"❌ خرق حفظ البيانات: {exc}")
+
+            with st.spinner("⏳ التحليل السعري الكامل: مطابقة المنافسين (~دقائق لأول مرة)…"):
+                sections, result, missing_clean, _astats = run_pricing_analysis(
+                    container, our_df, missing_df=missing_df,
+                )
+            state.sections = sections
+            state.missing_df = missing_clean  # بعد إزالة المطابَق سعرياً (مصدر حقيقة واحد)
+            state.analysis_results = result  # يحمل تقرير التدقيق ⇒ البانر يصدق
+
+            counts = result.section_counts
+            st.toast(
+                f"✅ تحليل مكتمل · 🔴 {counts.get(SectionType.PRICE_RAISE, 0):,} "
+                f"· 🟢 {counts.get(SectionType.PRICE_LOWER, 0):,} "
+                f"· 🔍 {mstats.get('confirmed_missing', 0):,} مفقود مؤكد",
+                icon="✅",
+            )
         except Exception as exc:  # عرض الخطأ بدل التعطّل الصامت
             st.error(f"تعذّر التحليل: {exc}")
         state.save(store)
@@ -84,6 +97,10 @@ def _processed(state: AppState, store: StateStore, container: Container) -> None
     processed.render(state, ai_service=container.ai)
 
 
+def _scraper(state: AppState, store: StateStore, container: Container) -> None:
+    scraper.render(state, container.scraper)
+
+
 def _section(page: Any) -> Callable[..., None]:
     """مهايئ موحّد للأقسام السعرية/المراجعة/المستبعد."""
 
@@ -102,6 +119,7 @@ PAGES: dict[str, Callable[[AppState, StateStore, Container], None]] = {
     "⚠️ تحت المراجعة": _section(review),
     "⚪ مستبعد": _section(excluded),
     "✅ تمت المعالجة": _processed,
+    "🕷️ كشط المنافسين": _scraper,
 }
 
 

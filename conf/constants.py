@@ -8,20 +8,33 @@
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Final
 
 from core.enums import SectionType
 
 # ════════════════════════════════════════════════════════════════════
-#  المسارات (تُحسب نسبةً لجذر المشروع: <root>/mahwous-pricing-v2/config/)
+#  المسارات — مستودع مكتفٍ ذاتياً + بيانات قابلة للضبط ببيئة (Railway Volume)
 # ════════════════════════════════════════════════════════════════════
-PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
-DATA_DIR: Final[Path] = PROJECT_ROOT / "data"
+# جذر المستودع = parents[1] (mahwous-pricing-v2) حيث نُسخت المحركات المرفقة
+# (engines/observability/utils/config.py). كل استيرادات ``sys.path.insert(PROJECT_ROOT)``
+# تستورد النسخة المرفقة، فيعمل ``from engines…`` من جذر المستودع وحده (Railway).
+# (#PRESERVED_LOGIC: الاسم PROJECT_ROOT محفوظ — لا تغيير في الملفات السبعة التي تستعمله.)
+PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
+
+# مجلد البيانات (القاعدة + الكاشات): متغيّر البيئة ``DATA_DIR`` أولاً
+# (على Railway = /data للـVolume)، وإلا الافتراضي المحلي التاريخي = <الأب>/data
+# (نفس السلوك الحالي تماماً، حيث تقيم قاعدة 129K والكاشات الدافئة محلياً).
+_ENV_DATA_DIR: Final[str] = os.environ.get("DATA_DIR", "").strip()
+_LEGACY_LOCAL_DATA: Final[Path] = Path(__file__).resolve().parents[2] / "data"
+DATA_DIR: Final[Path] = Path(_ENV_DATA_DIR) if _ENV_DATA_DIR else _LEGACY_LOCAL_DATA
 DEFAULT_DB_PATH: Final[Path] = DATA_DIR / "perfume_pricing.db"
 # قاعدة بيانات المنافسين الحيّة (مخزن الكشط، ~129K منتج) — مصدر كشف المفقودات.
 COMPETITOR_DB_PATH: Final[Path] = DATA_DIR / "pricing_v18.db"
 MISSING_CACHE_PATH: Final[Path] = DATA_DIR / "missing_cache.pkl"
+# كاش التحليل السعري الكامل (مخرجات run_full_analysis الثقيلة) — يُحسب مرّة.
+PRICING_CACHE_PATH: Final[Path] = DATA_DIR / "pricing_cache.pkl"
 COMPETITORS_FILE: Final[Path] = DATA_DIR / "competitors_list_v30.json"
 
 # ════════════════════════════════════════════════════════════════════
@@ -66,6 +79,7 @@ MISSING_MAX_PRICE: Final[float] = 15000.0
 MISSING_MIN_NAME_LEN: Final[int] = 8
 MISSING_MIN_SIZE_ML: Final[float] = 10.0
 MISSING_CACHE_VERSION: Final[str] = "F4v2"   # توقيع الكاش: F4v2|catalog_len|db_size
+PRICING_CACHE_VERSION: Final[str] = "P1v1"   # توقيع كاش التسعير: P1v1|catalog_len|db_size|use_ai
 
 # ════════════════════════════════════════════════════════════════════
 #  قواعد التصنيف (#PRESERVED_LOGIC — _split_results، app.py:472-489)

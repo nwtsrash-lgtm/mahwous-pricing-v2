@@ -120,6 +120,126 @@ def run_missing_analysis(
     }
 
 
+def load_competitor_dfs(db_path: str) -> dict[str, pd.DataFrame]:
+    """يحمّل منافسي القاعدة (~129K) كـ ``{اسم المتجر: DataFrame}`` للتحليل السعري.
+
+    #PRESERVED_LOGIC: مطابق لمسار تحميل DB في app.py:4159-4183 — يقرأ
+    ``competitor_products_store`` (السعر>0) ثم يعيد تسمية الأعمدة لما يتوقّعه
+    المحرّك (product_name→المنتج، price→السعر، image_url→صورة المنتج،
+    product_url→رابط المنتج، competitor→المنافس) ويجمّع حسب المتجر.
+    """
+    import os
+    import sqlite3
+
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"قاعدة المنافسين غير موجودة: {db_path}")
+    conn = sqlite3.connect(db_path)
+    try:
+        df = pd.read_sql_query(
+            "SELECT * FROM competitor_products_store WHERE price > 0", conn,
+        )
+    finally:
+        conn.close()
+    rename = {
+        "product_name": "المنتج",
+        "price": "السعر",
+        "image_url": "صورة المنتج",
+        "product_url": "رابط المنتج",
+        "competitor": "المنافس",
+    }
+    df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
+    group_col = "المنافس" if "المنافس" in df.columns else "competitor"
+    if group_col not in df.columns:
+        return {"كل المنتجات": df.reset_index(drop=True)}
+    return {
+        str(name): group.reset_index(drop=True)
+        for name, group in df.groupby(group_col, sort=False)
+    }
+
+
+def run_pricing_analysis(
+    container: Container,
+    our_df: pd.DataFrame,
+    *,
+    use_ai: Optional[bool] = None,
+    use_cache: bool = True,
+    missing_df: Optional[pd.DataFrame] = None,
+) -> tuple[dict[str, pd.DataFrame], AnalysisResult, Optional[pd.DataFrame], dict[str, Any]]:
+    """التحليل السعري الكامل: المحرّك → تصنيف → تنقية المفقودات → تدقيق → نتيجة.
+
+    يشغّل ``engines.engine.run_full_analysis(our_df, comp_dfs)`` (مع كاش قرصي
+    للمخرجات الثقيلة)، يصنّف النتيجة، **يزيل من المفقودات أي منافس مطابَق سعرياً**
+    (مصدر الحقيقة الحاسم — app.py:1184-1222)، ثم يدقّق. يُعيد:
+    (أقسام جاهزة للعرض، AnalysisResult مع تقرير التدقيق، المفقودات بعد التنقية، إحصاءات).
+
+    ``use_ai=None`` ⇒ يُفعَّل تلقائياً فقط إن وُجدت مفاتيح ذكاء اصطناعي
+    (النطاق الرمادي 60–84% بلا مفاتيح ⇒ مراجعة، بلا تكلفة). #PRESERVED_LOGIC.
+    """
+    import os
+    import sys
+
+    from conf.constants import (
+        COMPETITOR_DB_PATH,
+        PRICING_CACHE_PATH,
+        PRICING_CACHE_VERSION,
+        PROJECT_ROOT,
+    )
+    from core.enums import SectionType
+    from services.missing_service import load_cache, save_cache
+
+    if use_ai is None:
+        use_ai = container.settings.any_ai_configured
+
+    db_path = str(COMPETITOR_DB_PATH)
+    cache_path = str(PRICING_CACHE_PATH)
+    db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+    signature = f"{PRICING_CACHE_VERSION}|{len(our_df)}|{db_size}|{int(bool(use_ai))}"
+
+    results_df: Optional[pd.DataFrame] = (
+        load_cache(cache_path, signature) if use_cache else None
+    )
+    audit_stats: dict[str, Any] = {}
+    if results_df is not None:
+        audit_stats = {"cached": True, "rows": len(results_df)}
+    else:
+        comp_dfs = load_competitor_dfs(db_path)
+        if str(PROJECT_ROOT) not in sys.path:
+            sys.path.insert(0, str(PROJECT_ROOT))
+        from engines.engine import run_full_analysis  # type: ignore  #PRESERVED_LOGIC
+
+        results_df, audit_stats = run_full_analysis(
+            our_df, comp_dfs, use_ai=bool(use_ai),
+        )
+        audit_stats = dict(audit_stats or {})
+        audit_stats["cached"] = False
+        audit_stats["competitors"] = len(comp_dfs)
+        if use_cache and signature:
+            save_cache(cache_path, signature, results_df)
+
+    # ── تصنيف ثم تنقية المفقودات من المطابَق سعرياً (مصدر الحقيقة الحاسم) ──
+    from services.audit_service import dedup_missing_vs_matched
+
+    split = container.classification.classify(results_df)
+    missing_clean, removed = dedup_missing_vs_matched(split.sections, missing_df)
+    report = container.audit.reconcile(split, missing_clean)
+
+    counts = {SectionType(key): value for key, value in split.counts().items()}
+    missing_confirmed = 0
+    if (missing_clean is not None and not missing_clean.empty
+            and "مستوى_الثقة" in missing_clean.columns):
+        missing_confirmed = int((missing_clean["مستوى_الثقة"] == "green").sum())
+    counts[SectionType.MISSING] = missing_confirmed
+
+    result = AnalysisResult(
+        section_counts=counts,
+        total=split.total_in,
+        missing_count=missing_confirmed,
+        reconciliation=report,
+    )
+    audit_stats["missing_deduped"] = removed
+    return split.sections, result, missing_clean, audit_stats
+
+
 def run_analysis(
     container: Container,
     results_df: pd.DataFrame,
