@@ -35,7 +35,11 @@ COMPETITOR_DB_PATH: Final[Path] = DATA_DIR / "pricing_v18.db"
 MISSING_CACHE_PATH: Final[Path] = DATA_DIR / "missing_cache.pkl"
 # كاش التحليل السعري الكامل (مخرجات run_full_analysis الثقيلة) — يُحسب مرّة.
 PRICING_CACHE_PATH: Final[Path] = DATA_DIR / "pricing_cache.pkl"
-COMPETITORS_FILE: Final[Path] = DATA_DIR / "competitors_list_v30.json"
+COMPETITORS_FILE: Final[Path] = (
+    DATA_DIR / "competitors_list_v30.json"
+    if (DATA_DIR / "competitors_list_v30.json").exists()
+    else PROJECT_ROOT / "data" / "competitors_list_v30.json"
+)
 
 # ════════════════════════════════════════════════════════════════════
 #  أسماء الأعمدة (#PRESERVED_LOGIC — من app.py، حرفية لا تُغيَّر)
